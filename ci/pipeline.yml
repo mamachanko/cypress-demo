@@ -1,0 +1,79 @@
+---
+resources:
+  - name: git
+    type: git
+    icon: github-circle
+    source:
+      uri: https://github.com/mamachanko/cypress-demo
+  - name: pws
+    type: cf
+    icon: cloud-upload
+    source:
+      api: https://api.run.pivotal.io
+      username: {{pws-username}}
+      password: {{pws-password}}
+      organization: {{pws-org}}
+      space: {{pws-space}}
+      skip_cert_check: false
+
+jobs:
+  - name: build
+    plan:
+      - get: git
+        trigger: true
+
+      - task: build
+        config:
+          inputs:
+            - name: git
+          outputs:
+            - name: build-output
+          platform: linux
+          image_resource:
+            type: registry-image
+            source:
+              repository: node
+              tag: 11.13.0
+          params:
+            CI: true
+          run:
+            dir: git
+            path: bash
+            args:
+              - -eo
+              - pipefail
+              - -c
+              - |
+                ./scripts/build.sh
+                ls -lah ../build-output
+
+      - put: pws
+        params:
+          manifest: build-output/manifest.yml
+          vars:
+            hostname: {{hostname}}
+
+      - task: e2e
+        config:
+          inputs:
+            - name: git
+          outputs:
+            - name: build-output
+          platform: linux
+          image_resource:
+            type: registry-image
+            source:
+              repository: cypress/included
+              tag: 4.3.0
+          params:
+            CYPRESS_BASE_URL: https://cypress-demo.cfapps.io
+          run:
+            dir: git/e2e
+            path: bash
+            args:
+              - -eo
+              - pipefail
+              - -c
+              - |
+                yarn
+                cypress run --browser chrome --headless
